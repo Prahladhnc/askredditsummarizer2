@@ -344,9 +344,28 @@ if st.button("🔄 Refresh Now"):
 st.subheader("📋 Latest Posts")
 st.dataframe(df, use_container_width=True)
 
-st.subheader("🚀 Top Posts")
-st.dataframe(df.sort_values("Score", ascending=False).head(10),
-             use_container_width=True)
+# =====================================================
+# TOP POSTS (LAST 6 HOURS)
+# =====================================================
+
+df["Fetched At Raw"] = df["Fetched At"]  # keep formatted version
+
+# convert back to datetime for filtering
+df["Fetched At DT"] = pd.to_datetime(df["Fetched At Raw"], errors="coerce")
+
+cutoff = pd.Timestamp.utcnow() - pd.Timedelta(hours=6)
+
+top_6h = df[df["Fetched At DT"] >= cutoff]
+
+st.subheader("🚀 Top Posts (Last 6 Hours)")
+
+if len(top_6h):
+    st.dataframe(
+        top_6h.sort_values("Score", ascending=False).head(10),
+        use_container_width=True
+    )
+else:
+    st.info("No posts in the last 6 hours yet.")
 
 st.subheader("📊 Stats")
 
