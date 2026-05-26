@@ -43,7 +43,7 @@ def load_model():
 model = load_model()
 
 # =====================================================
-# CATEGORY SYSTEM (IMPROVED)
+# CATEGORY SYSTEM
 # =====================================================
 
 CATEGORY_SEEDS = {
@@ -140,7 +140,7 @@ def format_time(ts):
         return ts
 
 # =====================================================
-# CATEGORY CLASSIFICATION
+# CATEGORY
 # =====================================================
 
 def get_category(title):
@@ -149,7 +149,7 @@ def get_category(title):
     return CATEGORIES[int(np.argmax(sims))]
 
 # =====================================================
-# ENGAGEMENT SCORING
+# SCORING
 # =====================================================
 
 def engagement_multiplier(title):
@@ -192,23 +192,21 @@ def score_title(title):
     return int(max(1, min(100, score)))
 
 # =====================================================
-# IMPROVED REASON ENGINE (FIXED QUESTION LOGIC)
+# REASON ENGINE
 # =====================================================
 
 def question_signal(title):
     t = title.lower()
 
-    has_qmark = "?" in title
-    starts_hook = any(t.startswith(x) for x in [
+    has_q = "?" in title
+    starts = any(t.startswith(x) for x in [
         "what", "why", "how", "would you", "have you ever", "what if"
     ])
 
-    if has_qmark and starts_hook:
-        return ["strong structured AskReddit-style question"]
-
-    if has_qmark:
+    if has_q and starts:
+        return ["strong AskReddit-style structured question"]
+    if has_q:
         return ["question format but weak framing"]
-
     return []
 
 
@@ -217,21 +215,21 @@ def generate_reason(title):
     reasons = []
 
     if "would you" in t:
-        reasons.append("hypothetical decision prompt (high engagement)")
+        reasons.append("hypothetical decision prompt")
     if "have you ever" in t:
         reasons.append("personal experience trigger")
     if "what if" in t:
-        reasons.append("imaginative scenario drives storytelling")
+        reasons.append("imaginative scenario")
     if any(w in t for w in ["secret", "regret", "embarrassed", "worst"]):
-        reasons.append("emotional trigger increases sharing")
+        reasons.append("strong emotional trigger")
 
     reasons.extend(question_signal(title))
 
     if len(title.split()) > 15:
-        reasons.append("story-style prompt encourages detailed replies")
+        reasons.append("story-like structure")
 
     if not reasons:
-        reasons.append("neutral framing with broad appeal")
+        reasons.append("neutral but broad appeal")
 
     return " | ".join(reasons)
 
@@ -240,20 +238,14 @@ def generate_reason(title):
 # =====================================================
 
 def analyze_titles(titles):
-    results = []
-
+    out = []
     for t in titles:
-        cat = get_category(t)
-        sc = score_title(t)
-        reason = generate_reason(t)
-
-        results.append({
-            "score": sc,
-            "category": cat,
-            "reason": reason
+        out.append({
+            "score": score_title(t),
+            "category": get_category(t),
+            "reason": generate_reason(t)
         })
-
-    return results
+    return out
 
 # =====================================================
 # FETCH
@@ -313,7 +305,7 @@ if time.time() - st.session_state.last_refresh > REFRESH_SECONDS:
     st.session_state.last_refresh = time.time()
 
 # =====================================================
-# UI
+# LOAD DATA
 # =====================================================
 
 df = pd.read_sql_query("""
@@ -325,8 +317,19 @@ ORDER BY datetime(fetched_at) DESC
 
 df.columns = ["Title","Reddit Link","Posted","Score","Reason","Category","Fetched At"]
 
-df["Posted"] = df["Posted"].apply(format_time)
-df["Fetched At"] = df["Fetched At"].apply(format_time)
+# convert fetched time to datetime for filtering
+df["Fetched At DT"] = pd.to_datetime(df["Fetched At"], errors="coerce")
+
+# =====================================================
+# TOP POSTS (LAST 6 HOURS FIX)
+# =====================================================
+
+cutoff = pd.Timestamp.utcnow() - pd.Timedelta(hours=6)
+top_6h = df[df["Fetched At DT"] >= cutoff]
+
+# =====================================================
+# UI
+# =====================================================
 
 st.title("🔥 AskReddit Engagement Monitor")
 
@@ -342,30 +345,18 @@ if st.button("🔄 Refresh Now"):
     st.rerun()
 
 st.subheader("📋 Latest Posts")
-st.dataframe(df, use_container_width=True)
-
-# =====================================================
-# TOP POSTS (LAST 6 HOURS)
-# =====================================================
-
-df["Fetched At Raw"] = df["Fetched At"]  # keep formatted version
-
-# convert back to datetime for filtering
-df["Fetched At DT"] = pd.to_datetime(df["Fetched At Raw"], errors="coerce")
-
-cutoff = pd.Timestamp.utcnow() - pd.Timedelta(hours=6)
-
-top_6h = df[df["Fetched At DT"] >= cutoff]
+st.dataframe(df.drop(columns=["Fetched At DT"]), use_container_width=True)
 
 st.subheader("🚀 Top Posts (Last 6 Hours)")
 
 if len(top_6h):
     st.dataframe(
-        top_6h.sort_values("Score", ascending=False).head(10),
+        top_6h.sort_values("Score", ascending=False).head(10)
+        .drop(columns=["Fetched At DT"]),
         use_container_width=True
     )
 else:
-    st.info("No posts in the last 6 hours yet.")
+    st.info("No posts in last 6 hours yet.")
 
 st.subheader("📊 Stats")
 
@@ -380,4 +371,4 @@ with c2:
 with c3:
     st.metric("Max Score", df["Score"].max() if len(df) else 0)
 
-st.caption("Improved semantic scoring + structured reasoning (no LLM required)")
+st.caption("Semantic scoring + structured reasoning + 6-hour trending window")
