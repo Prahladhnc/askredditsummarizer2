@@ -23,15 +23,11 @@ REFRESH_SECONDS = 200
 POLAND_TZ = pytz.timezone("Europe/Warsaw")
 
 # =====================================================
-# STREAMLIT CONFIG
+# STREAMLIT
 # =====================================================
 
 st.set_page_config(page_title="AskReddit Monitor", layout="wide")
 st_autorefresh(interval=REFRESH_SECONDS * 1000, key="auto_refresh")
-
-# =====================================================
-# SESSION STATE
-# =====================================================
 
 if "last_refresh" not in st.session_state:
     st.session_state.last_refresh = 0
@@ -76,7 +72,7 @@ CATEGORIES = list(CATEGORY_SEEDS.keys())
 category_embeddings = model.encode(list(CATEGORY_SEEDS.values()), convert_to_tensor=True)
 
 # =====================================================
-# ENGAGEMENT ARCHETYPES (NEW CORE LOGIC)
+# ENGAGEMENT ARCHETYPES
 # =====================================================
 
 ENGAGEMENT_ARCHETYPES = [
@@ -95,7 +91,7 @@ ENGAGEMENT_ARCHETYPES = [
 archetype_embeddings = model.encode(ENGAGEMENT_ARCHETYPES, convert_to_tensor=True)
 
 # =====================================================
-# DATABASE
+# DB
 # =====================================================
 
 conn = sqlite3.connect(DB_NAME, check_same_thread=False)
@@ -119,17 +115,10 @@ conn.commit()
 # HELPERS
 # =====================================================
 
-def format_time(ts):
-    try:
-        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-        dt = dt.astimezone(POLAND_TZ)
-        return dt.strftime("%d/%m/%Y %H:%M:%S")
-    except:
-        return ts
-
 def post_exists(post_id):
     cursor.execute("SELECT 1 FROM posts WHERE post_id=?", (post_id,))
     return cursor.fetchone() is not None
+
 
 def save_post(post_id, title, url, posted_time, score, reason, category):
     cursor.execute("""
@@ -141,8 +130,17 @@ def save_post(post_id, title, url, posted_time, score, reason, category):
     ))
     conn.commit()
 
+
+def format_time(ts):
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        dt = dt.astimezone(POLAND_TZ)
+        return dt.strftime("%d/%m/%Y %H:%M:%S")
+    except:
+        return ts
+
 # =====================================================
-# CATEGORY CLASSIFICATION (IMPROVED)
+# CATEGORY CLASSIFICATION
 # =====================================================
 
 def get_category(title):
@@ -151,7 +149,7 @@ def get_category(title):
     return CATEGORIES[int(np.argmax(sims))]
 
 # =====================================================
-# ENGAGEMENT SCORING (REPLACED LOGIC)
+# ENGAGEMENT SCORING
 # =====================================================
 
 def engagement_multiplier(title):
@@ -164,10 +162,11 @@ def engagement_multiplier(title):
         m += 0.20
     if "have you ever" in t:
         m += 0.25
-    if t.count("?") >= 1:
+    if "?" in t:
         m += 0.10
 
     return m
+
 
 def score_title(title):
     emb = model.encode(title, convert_to_tensor=True)
@@ -177,7 +176,6 @@ def score_title(title):
 
     score = base * 100
 
-    # lightweight boosts
     t = title.lower()
 
     if any(w in t for w in ["secret", "regret", "worst", "embarrassed"]):
@@ -194,28 +192,46 @@ def score_title(title):
     return int(max(1, min(100, score)))
 
 # =====================================================
-# REASON ENGINE (IMPROVED)
+# IMPROVED REASON ENGINE (FIXED QUESTION LOGIC)
 # =====================================================
+
+def question_signal(title):
+    t = title.lower()
+
+    has_qmark = "?" in title
+    starts_hook = any(t.startswith(x) for x in [
+        "what", "why", "how", "would you", "have you ever", "what if"
+    ])
+
+    if has_qmark and starts_hook:
+        return ["strong structured AskReddit-style question"]
+
+    if has_qmark:
+        return ["question format but weak framing"]
+
+    return []
+
 
 def generate_reason(title):
     t = title.lower()
     reasons = []
 
     if "would you" in t:
-        reasons.append("hypothetical engagement hook")
+        reasons.append("hypothetical decision prompt (high engagement)")
     if "have you ever" in t:
         reasons.append("personal experience trigger")
     if "what if" in t:
-        reasons.append("imaginative scenario hook")
+        reasons.append("imaginative scenario drives storytelling")
     if any(w in t for w in ["secret", "regret", "embarrassed", "worst"]):
-        reasons.append("strong emotional trigger")
-    if "?" in t:
-        reasons.append("question format increases comments")
+        reasons.append("emotional trigger increases sharing")
+
+    reasons.extend(question_signal(title))
+
     if len(title.split()) > 15:
-        reasons.append("story-like structure likely to generate replies")
+        reasons.append("story-style prompt encourages detailed replies")
 
     if not reasons:
-        reasons.append("neutral but broad appeal")
+        reasons.append("neutral framing with broad appeal")
 
     return " | ".join(reasons)
 
@@ -225,6 +241,7 @@ def generate_reason(title):
 
 def analyze_titles(titles):
     results = []
+
     for t in titles:
         cat = get_category(t)
         sc = score_title(t)
@@ -235,10 +252,11 @@ def analyze_titles(titles):
             "category": cat,
             "reason": reason
         })
+
     return results
 
 # =====================================================
-# FETCH POSTS
+# FETCH
 # =====================================================
 
 def fetch_posts():
@@ -338,11 +356,9 @@ with c1:
     st.metric("Total Posts", len(df))
 
 with c2:
-    st.metric("Avg Score",
-              round(df["Score"].mean(), 1) if len(df) else 0)
+    st.metric("Avg Score", round(df["Score"].mean(), 1) if len(df) else 0)
 
 with c3:
-    st.metric("Max Score",
-              df["Score"].max() if len(df) else 0)
+    st.metric("Max Score", df["Score"].max() if len(df) else 0)
 
-st.caption("Auto-refresh every 200 seconds | Improved embedding-based scoring")
+st.caption("Improved semantic scoring + structured reasoning (no LLM required)")
