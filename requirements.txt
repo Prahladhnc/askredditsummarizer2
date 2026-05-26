@@ -1,0 +1,8 @@
+streamlit
+streamlit-autorefresh
+feedparser
+pandas
+numpy
+pytz
+sentence-transformers
+torch
