@@ -309,13 +309,19 @@ ORDER BY datetime(fetched_at) DESC
 df.columns = ["Title","Reddit Link","Posted","Score","Reason","Category","Fetched At"]
 
 # =====================================================
-# FIX: UNIFIED UTC TIME HANDLING (IMPORTANT FIX)
+# TIME FIX (CRITICAL)
 # =====================================================
 
 df["Fetched At DT"] = pd.to_datetime(df["Fetched At"], errors="coerce", utc=True)
 
-cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(hours=6)
+# display format (what you wanted)
+df["Fetched At Display"] = df["Fetched At DT"].dt.strftime("%d/%m/%Y %H:%M:%S")
 
+# =====================================================
+# TOP 6 HOURS FILTER
+# =====================================================
+
+cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(hours=6)
 top_6h = df[df["Fetched At DT"] >= cutoff]
 
 # =====================================================
@@ -335,19 +341,46 @@ if st.button("🔄 Refresh Now"):
     st.session_state.last_refresh = time.time()
     st.rerun()
 
+# =====================================================
+# TABLES
+# =====================================================
+
 st.subheader("📋 Latest Posts")
-st.dataframe(df.drop(columns=["Fetched At DT"]), use_container_width=True)
+
+st.dataframe(
+    df[[
+        "Title",
+        "Reddit Link",
+        "Posted",
+        "Score",
+        "Reason",
+        "Category",
+        "Fetched At Display"
+    ]],
+    use_container_width=True
+)
 
 st.subheader("🚀 Top Posts (Last 6 Hours)")
 
 if len(top_6h):
     st.dataframe(
-        top_6h.sort_values("Score", ascending=False).head(10)
-        .drop(columns=["Fetched At DT"]),
+        top_6h.sort_values("Score", ascending=False).head(10)[[
+            "Title",
+            "Reddit Link",
+            "Posted",
+            "Score",
+            "Reason",
+            "Category",
+            "Fetched At Display"
+        ]],
         use_container_width=True
     )
 else:
     st.info("No posts in last 6 hours yet.")
+
+# =====================================================
+# STATS
+# =====================================================
 
 st.subheader("📊 Stats")
 
@@ -362,4 +395,4 @@ with c2:
 with c3:
     st.metric("Max Score", df["Score"].max() if len(df) else 0)
 
-st.caption("Fixed UTC datetime handling + 6-hour trending window + semantic scoring")
+st.caption("Clean UI datetime formatting + UTC-safe filtering + semantic scoring")
