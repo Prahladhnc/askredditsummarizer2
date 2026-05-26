@@ -130,15 +130,6 @@ def save_post(post_id, title, url, posted_time, score, reason, category):
     ))
     conn.commit()
 
-
-def format_time(ts):
-    try:
-        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-        dt = dt.astimezone(POLAND_TZ)
-        return dt.strftime("%d/%m/%Y %H:%M:%S")
-    except:
-        return ts
-
 # =====================================================
 # CATEGORY
 # =====================================================
@@ -317,14 +308,14 @@ ORDER BY datetime(fetched_at) DESC
 
 df.columns = ["Title","Reddit Link","Posted","Score","Reason","Category","Fetched At"]
 
-# convert fetched time to datetime for filtering
-df["Fetched At DT"] = pd.to_datetime(df["Fetched At"], errors="coerce")
-
 # =====================================================
-# TOP POSTS (LAST 6 HOURS FIX)
+# FIX: UNIFIED UTC TIME HANDLING (IMPORTANT FIX)
 # =====================================================
 
-cutoff = pd.Timestamp.utcnow() - pd.Timedelta(hours=6)
+df["Fetched At DT"] = pd.to_datetime(df["Fetched At"], errors="coerce", utc=True)
+
+cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(hours=6)
+
 top_6h = df[df["Fetched At DT"] >= cutoff]
 
 # =====================================================
@@ -371,4 +362,4 @@ with c2:
 with c3:
     st.metric("Max Score", df["Score"].max() if len(df) else 0)
 
-st.caption("Semantic scoring + structured reasoning + 6-hour trending window")
+st.caption("Fixed UTC datetime handling + 6-hour trending window + semantic scoring")
